@@ -115,8 +115,8 @@ delaya:
  	lsr
  	bcs dly1
 dly1: 	beq dly2
-  	lsr
-  	beq dly3
-  	bcc dly3
+  lsr
+  beq dly3
+  bcc dly3
 dly2:  	bne dly3
 dly3: 	rts
