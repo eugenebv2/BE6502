@@ -33,6 +33,4 @@ vasm.sh 檔案批次內容
 
 [def3]: images/IMG_4450.jpg
 
-![alt text][def4]
 
-[def4]: images/IMG_4451.jpg
