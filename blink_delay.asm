@@ -31,7 +31,7 @@ dela:
     bne dela
     rts
 
-delay:
+delay:        ; Delay Milliseconds (DELAY)  From "6502 Assembly language Subroutines"
     cpy #0
     beq exit
     nop
