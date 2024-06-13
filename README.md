@@ -19,4 +19,4 @@ vasm.sh 檔案批次內容
 配合 hexdump 轉換位址在 1000: 開始，複製貼上到 wozmon 輸入 1000 R 後執行
 
 <hr>
-<img src="https://photos.google.com/photo/AF1QipNu4DdFwJCVSWQoo2eWw4dptK0bRq43Hogx3eKP"/>
+
