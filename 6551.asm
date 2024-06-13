@@ -29,13 +29,12 @@ LF = $0D ; line feed
       JSR ECHO
       LDA #LF
       JSR ECHO
+
       LDA #<MSG1
       STA MSGL
       LDA #>MSG1
       STA MSGH
       JSR SHWMSG
-      LDA #$0A
-      JSR ECHO
       LDA #LF
       JSR ECHO
 
