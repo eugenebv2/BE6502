@@ -20,4 +20,6 @@ vasm.sh 檔案批次內容
 
 <hr>
 
-<img src="https://photos.google.com/photo/AF1QipNu4DdFwJCVSWQoo2eWw4dptK0bRq43Hogx3eKP" width='600'/>
+![alt text](https://photos.google.com/photo/AF1QipNu4DdFwJCVSWQoo2eWw4dptK0bRq43Hogx3eKP)
+
+![alt text](https://github.com/[username]/[reponame]/blob/[branch]/image.jpg?raw=true)
