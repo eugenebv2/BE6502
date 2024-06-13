@@ -5,6 +5,7 @@ BE6502 監督程式用 Ben Eater 分享的 wozmon
 編譯程式 vasm
 
 vasm.sh 檔案批次內容
+
   var=$1
   rm $1.bin
   vasm -Fbin -dotdir -o $var.bin $var.asm
