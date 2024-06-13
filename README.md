@@ -24,4 +24,4 @@ vasm.sh 檔案批次內容
 ![alt text][def]
 
 
-[def]: https://github.com/eugenebv2/BE6502/images/.jpg?raw=true
+[def]: https://github.com/eugenebv2/BE6502/images/IMG_4448.jpg?raw=true
