@@ -20,6 +20,5 @@ vasm.sh 檔案批次內容
 
 <hr>
 
-![alt text](https://photos.google.com/photo/AF1QipNu4DdFwJCVSWQoo2eWw4dptK0bRq43Hogx3eKP)
 
-![alt text](https://github.com/[username]/[reponame]/blob/[branch]/image.jpg?raw=true)
+![alt text](https://github.com/eugenebv2/BE6502/edit/main/image.jpg?raw=true)
