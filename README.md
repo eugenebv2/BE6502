@@ -21,4 +21,7 @@ vasm.sh 檔案批次內容
 <hr>
 
 
-![alt text](https://github.com/eugenebv2/BE6502/edit/main/image.jpg?raw=true)
+![alt text][def]
+
+
+[def]: https://github.com/eugenebv2/BE6502/image.jpg?raw=true
