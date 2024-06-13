@@ -80,7 +80,7 @@ SHWMSG  LDY #$0
 ; Read character from serial port and return in A
 GETCHARA: LDA ACIA_SR 
 	LDA #$08
-        BEQ GETCHAR
+        BEQ GETCHARA
         LDA ACIA_DAT
         RTS
 
