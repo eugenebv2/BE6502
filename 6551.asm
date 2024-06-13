@@ -78,12 +78,6 @@ SHWMSG  LDY #$0
 .DONE   RTS 
 
 ; Read character from serial port and return in A
-GETCHARA: LDA ACIA_SR 
-	LDA #$08
-        BEQ GETCHARA
-        LDA ACIA_DAT
-        RTS
-
 GETCHAR:    LDA ACIA_SR     ; See if we got an incoming char
             AND #$08        ; Test bit 3
             BEQ GETCHAR     ; Wait for character
