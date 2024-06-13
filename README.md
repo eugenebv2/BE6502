@@ -22,13 +22,17 @@ vasm.sh 檔案批次內容
 
 
 ![alt text][def1]
+
 [def1]: images/IMG_4448.jpg
 
 ![alt text][def2]
+
 [def2]: images/IMG_4449.jpg
 
 ![alt text][def3]
+
 [def3]: images/IMG_4450.jpg
 
 ![alt text][def4]
+
 [def4]: images/IMG_4451.jpg
