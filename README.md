@@ -2,8 +2,10 @@ Using BE6502 board testing 6502 assembler.
 
 BE6502 監督程式用 Ben Eater 分享的 wozmon 
 
-編譯程式 vasm
+8000 R 可進入 BASIC 
 
+
+編譯程式 vasm
 vasm.sh 檔案批次內容
 
   var=$1<br/>
