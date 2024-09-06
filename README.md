@@ -1,4 +1,4 @@
-BE6502 監督程式用 Ben Eater 分享的 wozmon 
+BE6502 監督程式用 Ben Eater 分享的 msbasic + bios + wozmon 
 
 8000 R 可進入 MS BASIC 
 <hr>
