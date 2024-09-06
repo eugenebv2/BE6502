@@ -1,9 +1,9 @@
-Using BE6502 board testing 6502 assembler.
-
 BE6502 監督程式用 Ben Eater 分享的 wozmon 
 
 8000 R 可進入 MS BASIC 
 <hr>
+Using BE6502 board testing 6502 assembler.
+
 編譯程式 vasm
 
 vasm.sh 檔案批次內容
@@ -17,7 +17,6 @@ vasm.sh 檔案批次內容
 配合 hexdump 轉換位址在 1000: 開始，複製貼上到 wozmon 輸入 1000 R 後執行
 
 <hr>
-
 
 ![alt text][def1]
 
