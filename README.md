@@ -1,3 +1,5 @@
+Clone from: https://github.com/tebl/BE6502-Build-a-65c02-computer
+
 BE6502 監督程式用 Ben Eater 分享的 msbasic + bios + wozmon 
 
 8000 R 可進入 MS BASIC 
