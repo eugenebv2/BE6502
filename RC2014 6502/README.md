@@ -1,5 +1,5 @@
 Change the pcb sch to RC2014 6502 compatible. <BR/>
-And change the VIA 6522 I/O address to $8000, enable ping from 65C51 board TO rc2014 bus ping 37<BR/>
+And change the VIA 6522 I/O address to $8000, enable pin from 65C51 board TO rc2014 bus pin 37<BR/>
 The 65C51 I/O address change the pic sch to get $8400<BR/>
 
 6502 Monitor RC2014 v0.2.2<BR/>
