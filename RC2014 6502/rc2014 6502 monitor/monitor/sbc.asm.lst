@@ -1,0 +1,1247 @@
+                        ;---------------------------------------------------------------------
+                        ; 6502 Monitor
+                        ; Modified for RC2014
+                        ; Changes are copyright Ben Chong and freely licensed to the community
+                        ;
+                        ; ----------------- assembly instructions ----------------------------
+                        ; This version is assembled using asmx in the following way:
+                        ;       asmx -l -b 8000h-ffffh -e -C 6502 sbc.asm
+                        ;
+
+                        ;
+                        ; Assemble the sections of the Monitor
+                        ;
+F800                    	.org $f800
+                        	
+                        	; The following files should NOT define absolute addresses
+                        	
+                                ; Intel HEX file handler
+F800                     	.include upload.asm
+                        ;---------------------------------------------------------------------
+                        ; Modified for RC2014
+                        ; Changes are copyright Ben Chong and freely licensed to the community
+                        ;---------------------------------------------------------------------
+                        ; upload.asm
+                        ; By Daryl Rictor & Ross Archer  Aug 2002
+                        ;
+
+      = 00EA            temp      	=   	$ea     	; save hex value
+      = 00EB            chksum    	=   	$eb        	; record checksum accumulator
+      = 00EC            reclen    	=   	$ec        	; record length in bytes
+      = 00ED            start_lo  	=   	$ed
+      = 00EE            start_hi  	=   	$ee
+      = 00EF            rectype   	=   	$ef
+
+      = 00F0            bytecount_l     =       $f0
+      = 00F1            bytecount_h     =       $f1
+
+      = 03EC            dlfail    	=   	$03ec    	; flag for upload failure
+
+                        ;
+                        ;
+                        ;****************************************************
+                        ;
+                        ; Intel-hex 6502 upload program
+                        ; Ross Archer, 25 July 2002
+                        ;
+                        ; Changes:
+                        ; 1. Make everything breakable/escapable with an ESC
+                        ; 2. Consolidate error handling
+                        ;
+F800                    HexUpLd
+F800  A9 00             		lda    	#0
+F802  8D EC03                   	sta	dlfail          ;Start by assuming no D/L failure
+F805  85 F0                     	sta     bytecount_l
+F807  85 F1                     	sta     bytecount_h
+F809  A9 F9                             lda	#>MsgStart
+F80B  A2 15             		ldx	#<MsgStart
+F80D  20 05FA                           jsr     PrintStrAX
+                        ;	  	beq	IHex	        ; Equivalent to a BRA
+                                        ; Record processing loop
+F810                    HdwRecs
+                                ; 	jsr     GetSer          ; Wait for start of record mark ':'
+F810  20 03FF                           jsr     input_char
+F813  C9 1B                             cmp     #ESC            ; If we pressed ESC
+F815  D0 03                             bne     hul0            ; Not ESC
+F817                    hul1                                    ; Branch here because HdEr3 is too faraway
+F817  4C A7F8                           jmp     hul_done        ; Handle ESC
+F81A                    hul0
+F81A  C9 3A                     	cmp     #':'
+F81C  D0 F2                     	bne     HdwRecs         ; not found yet
+                                	; Start of record marker has been found
+F81E  20 C7F8           IHex    	jsr     GetHex          ; Get the record length
+F821  B0 F4                             bcs     hul1            ; ESC = quit
+F823  85 EC                     	sta     reclen          ; save it
+F825  85 EB                    	 	sta     chksum          ; and save first byte of checksum
+F827  20 C7F8                   	jsr     GetHex          ; Get the high part of start address
+F82A  B0 EB                             bcs     hul1            ; ESC = quit
+F82C  85 EE                     	sta     start_hi
+F82E  18                        	clc
+F82F  65 EB                     	adc     chksum          ; Add in the checksum
+F831  85 EB                     	sta     chksum          ;
+F833  20 C7F8                   	jsr     GetHex          ; Get the low part of the start address
+F836  B0 DF                     	bcs     hul1            ; ESC = quit
+F838  85 ED                     	sta     start_lo
+F83A  18                        	clc
+F83B  65 EB                     	adc     chksum
+F83D  85 EB                     	sta     chksum
+F83F  20 C7F8                   	jsr     GetHex          ; Get the record type
+F842  B0 63                             bcs     hul_done        ; ESC = quit
+F844  85 EF                     	sta     rectype         ; & save it
+F846  18                        	clc
+F847  65 EB                     	adc     chksum
+F849  85 EB                     	sta     chksum
+F84B  A5 EF                     	lda     rectype
+F84D  D0 37                     	bne     HdEr1           ; Not data record; check for end-of-record
+F84F  A6 EC                     	ldx     reclen          ; number of data bytes to write to memory
+F851  A0 00                     	ldy     #0              ; start offset at 0
+
+                                        ; Data handler loop
+F853  20 C7F8           HdLp1   	jsr     GetHex          ; Get the first/next/last data byte
+F856  B0 4F                             bcs     hul_done        ; ESC = quit
+F858  91 ED                     	sta     (start_lo),y    ; Save it to RAM
+F85A  E6 F0                     	inc     bytecount_l     ; increment byte count
+F85C  D0 02                     	bne     bc_1
+F85E  E6 F1                     	inc     bytecount_h
+F860                    bc_1
+F860  18                        	clc
+F861  65 EB                     	adc     chksum
+F863  85 EB                     	sta     chksum          ;
+F865  C8                        	iny                     ; update data pointer
+F866  CA                        	dex                     ; decrement count
+F867  D0 EA                     	bne     HdLp1
+F869  20 C7F8                   	jsr     GetHex          ; get the checksum
+F86C  B0 39                             bcs     hul_done        ; ESC = quit
+F86E  18                        	clc
+F86F  65 EB                     	adc     chksum
+F871  D0 08                     	bne     HdDlF1          ; If failed, report it
+                                	; Another successful record has been processed
+F873  A9 2E                     	lda     #'.'            ; Character indicating record OK = '.'
+F875  8D A0C0                   	sta	uart_xmit        ; write it out but don't wait for output
+                        ;                jsr     output_char
+F878  4C 10F8                   	jmp     HdwRecs         ; get next record
+                                	; Bad checksum
+F87B  A9 46             HdDlF1  	lda     #'F'            ; Character indicating record failure = 'F'
+F87D  8D EC03                   	sta     dlfail          ; upload failed if non-zero
+F880  8D A0C0                   	sta	uart_xmit        ; write it to transmit buffer register
+F883  4C 10F8                   	jmp     HdwRecs         ; wait for next record start
+
+                                        ; Not a data record
+F886  C9 01             HdEr1   	cmp     #1              ; Check for end-of-record type
+F888  F0 0B                     	beq     hul_endrec
+F88A  A9 58                     	lda     #'X'            ; Character indicating bad record type
+F88C  8D EC03                   	sta     dlfail          ; non-zero --> upload has failed
+F88F  8D A0C0                   	sta     uart_xmit
+                        ;		lda	#>MsgUnknownRecType
+                        ;		ldx	#<MsgUnknownRecType
+                        ;                jsr     PrintStrAX      ; Warn user of unknown record type
+                        ;		lda     rectype         ; Get it
+                        ;        	sta     dlfail          ; non-zero --> upload has failed
+                        ;        	jsr     Print1Byte      ; print it
+                        ;		lda     #CR		; but we'll let it finish so as not to
+                        ;        	jsr     output_char		; falsely start a new d/l from existing
+                        ;        	lda     #LF		; file that may still be coming in for
+                        ;        	jsr     output_char          ; quite some time yet.
+                        ;		jmp	HdwRecs
+F892  4C A7F8                           jmp     hul_done        ; Done
+
+                        		; We've reached the end-of-record record
+F895                    hul_endrec
+F895  20 C7F8                      	jsr     GetHex          ; get the checksum
+F898  B0 0D                             bcs     hul_done        ; ESC = quit
+F89A  18                        	clc
+F89B  65 EB                     	adc     chksum          ; Add previous checksum accumulator value
+F89D  F0 08                     	beq     HdEr3           ; checksum = 0 means we're OK!
+                        ;		lda	#>MsgBadRecChksum
+                        ;		ldx	#<MsgBadRecChksum
+                        ;               jsr     PrintStrAX
+F89F  A9 46                             lda     #'F'            ; Character indicating record failure = 'F'
+F8A1  8D EC03                   	sta     dlfail          ; upload failed if non-zero
+F8A4  8D A0C0                   	sta	uart_xmit        ; write it to transmit buffer register
+                        ;                jmp     HdErNX
+                                        ; Pass through to central error/completion handling
+                                        ; -------------------
+                                        ; We're done here
+F8A7                    hul_done
+F8A7  AD EC03           HdEr3   	lda     dlfail
+F8AA  F0 0A                     	beq     HdErOK          ; No errors
+                                	;A upload failure has occurred
+F8AC  A9 F8             		lda	#>MsgUploadFail
+F8AE  A2 ED             		ldx	#<MsgUploadFail
+F8B0  20 05FA                           jsr     PrintStrAX
+F8B3  4C C4F8                           jmp     HdErNX          ; Quit
+                                        ; No errors
+F8B6  A9 F8             HdErOK  	lda	#>MsgUploadOK
+F8B8  A2 FF             		ldx	#<MsgUploadOK
+F8BA  20 05FA                           jsr     PrintStrAX
+                                        ; # of bytes
+F8BD  A5 F1                             lda     bytecount_h
+F8BF  A6 F0                             ldx     bytecount_l
+F8C1  20 DAF9                           jsr     print2byte
+                        		; Eat final characters so monitor doesn't cope with it
+                        ;	  	jsr     Flush		; flush the input buffer
+F8C4                    HdErNX
+F8C4  4C B3FA                           jmp     monitor
+
+                        ;---------------------------------------------------------------------
+                        ;  subroutines
+                        ;
+
+                        ;GetSer  	jsr	input_char	; get input from Serial Port	
+                        ;                cmp     #ESC            ; check for abort
+                        ;        	bne     GSerXit         ; return character if not
+                        ;
+                        ;                ; Escape
+                        ;                jmp     HdEr3
+
+                        ;---------------------------------------------------------------------
+                        ; Exit: CY=1 if ESC
+                        ;
+F8C7  A9 00             GetHex  	lda     #$00
+F8C9  85 EA             	  	sta     temp
+F8CB  20 D6F8                   	jsr     GetNibl
+F8CE  B0 1B                     	bcs     gh_quit
+F8D0  0A                        	asl     a
+F8D1  0A                        	asl     a
+F8D2  0A                        	asl     a
+F8D3  0A                       	 	asl     a       	; This is the upper nibble
+F8D4  85 EA                     	sta     temp
+                        ;---------------------------------------------------------------------
+F8D6                    GetNibl
+                        ; 	        jsr     GetSer
+F8D6  20 03FF                           jsr     input_char
+F8D9  C9 1B                             cmp     #ESC
+F8DB  F0 0E                             beq     gh_quit
+                        					; Convert the ASCII nibble to numeric value from 0-F:
+F8DD  C9 3A             	        cmp     #'9'+1  	; See if it's 0-9 or 'A'..'F' (no lowercase yet)
+F8DF  90 02                    	 	bcc     MkNnh   	; If we borrowed, we lost the carry so 0..9
+F8E1  E9 08                     	sbc     #7+1    	; Subtract off extra 7 (sbc subtracts off one less)
+                                	; If we fall through, carry is set unlike direct entry at MkNnh
+F8E3  E9 2F             MkNnh   	sbc     #'0'-1  	; subtract off '0' (if carry clear coming in)
+F8E5  29 0F                     	and     #$0F    	; no upper nibble no matter what
+F8E7  05 EA                     	ora     temp
+F8E9  18                        	clc
+                        ;GSerXit
+F8EA  60                        	rts             	; return with the nibble received
+F8EB                    gh_quit
+F8EB  38                                sec
+F8EC  60                                rts
+
+
+
+                        ; Checksum messages
+                        ;					
+                        ;MsgUnknownRecType
+                        ;		.byte   CR,LF
+                        ;      		.byte   "Unknown record type $"
+                        ;		.byte	0		; null-terminate every string
+                        ;MsgBadRecChksum .byte   CR,LF
+                        ;                .byte   "Bad record checksum!"
+                        ;        	.byte   0		; Null-terminate
+F8ED  0D0A              MsgUploadFail   .byte   CR,LF
+F8EF  55706C6F 61642046                 .byte   "Upload Failed",CR,LF
+F8F7  61696C65 640D0A
+                        ;                .byte   "Aborting!"
+F8FE  00                                .byte   0               ; null-terminate every string or crash'n'burn
+F8FF  0D0A              MsgUploadOK	.byte   CR,LF
+F901  55706C6F 61642062                 .byte   "Upload byte count: "
+F909  79746520 636F756E
+F911  743A20
+F914  00                        	.byte   0
+                                	
+F915  0D0A              MsgStart        .byte   CR, LF
+F917  55706C6F 6164206E                 .byte   "Upload now (ESC to quit):"
+F91F  6F772028 45534320
+F927  746F2071 75697429
+F92F  3A
+F930  00                                .byte   0
+                              	
+                        ;  Fin.
+                        ;
+
+                                ; Change this line according to the type of UART board
+                        ;        .include rruart.asm     ; uart init
+                        ;      	 .include 16c550.asm
+                        ;        .include 16c750.asm
+                        ;        .include 6850.asm
+                        ;        .include 16c550_irq.asm
+F931                            .include 6551.asm
+                        ; 6502 BIOS
+                        ; Based on original code by Daryl Rictor
+                        ; Adapted to 6551 ACIA board for RC2014
+                        ; NOTE: The 6551 ACIA works with the 6502 card for simple Monitor functions
+                        ; However, loading an Intel HEX file appears to overwhelm the ACIA.
+                        ;
+                        ;
+                        ; ----------------- assembly instructions ----------------------------
+                        ;
+                        ; this is a subroutine library only
+                        ; it must be included in an executable source file
+                        ;
+                        ;
+                        ;*** I/O Locations *******************************
+                        ; Define the i/o address of the UART chip
+                        ;*** 6551 ACIA ************************
+
+      = C0A0            uart_base               = $c0a0
+      = C0A0            uart_data_reg           = $c0a0
+      = C0A1            uart_status_reg         = $c0a1
+      = C0A2            uart_command_reg        = $c0a2
+      = C0A3            uart_control_reg        = $c0a3
+      = C0A0            uart_xmit               = uart_data_reg     ; Used by upload.asm
+
+                        ;
+                        ;***********************************************************************
+                        ; UART I/O Support Routines
+                        ; We'll use Daryl's routine names for compatibility with his software/code
+                        ; Otherwise, we'll use UART-agnostic nomemclature
+
+                        ;---------------------------------------------------------------------
+
+F931                    ACIA1_init
+F931                    uart_init
+                                        ; Software reset
+F931  A9 00                             lda     #$00
+F933  8D A1C0                           sta     uart_status_reg
+
+                                        ; 0000 1011     -> no recv irq
+F936  A9 0B                             lda     #$0b
+F938  8D A2C0                           sta     uart_command_reg
+
+                        		; 0001 0000
+F93B  A9 10                             lda     #$10    ; 115200 baud, /16, 8+1
+F93D  8D A3C0                           sta     uart_control_reg
+
+F940  60                                rts                     ; done
+
+                        ;---------------------------------------------------------------------
+                        ; Input char from UART (blocking)
+                        ; Exit: character in A
+F941                    ACIA1_Input
+F941                    uart_input
+F941  AD A1C0                          lda      uart_status_reg           ; Serial port status
+F944  29 08                            and      #$08               ; is recvr full
+F946  F0 F9                            beq      uart_input        ; no char to get
+F948  AD A0C0                          lda      uart_data_reg           ; get chr
+F94B  60                               rts                      ;
+
+                        ;---------------------------------------------------------------------
+                        ; Non-waiting get character routine
+                        ; Scan for input (no wait), C=1 char, C=0 no character
+F94C                    ACIA1_Scan
+F94C                    uart_scan
+F94C  18                                clc
+F94D  AD A1C0                           lda   uart_status_reg        ; Serial port status
+F950  29 08                             and   #$08               ; mask rcvr full bit
+F952  F0 04                             beq   uart_scan2
+F954  AD A0C0                           lda   uart_data_reg           ; get char
+F957  38                                sec
+F958  60                uart_scan2     rts
+
+                        ;---------------------------------------------------------------------
+                        ; output to OutPut Port
+                        ; Entry: character in A
+                        ; Exit: character in A
+F959                    ACIA1_Output
+F959                    uart_output
+F959  48                                pha                      ; save registers
+F95A                    uart_out1
+F95A  AD A1C0                           lda   uart_status_reg           ; serial port status
+F95D  29 10                             and   #$10              ; is tx buffer empty
+F95F  F0 F9                             beq   uart_out1         ; no
+F961  68                                pla                     ; get char
+F962  8D A0C0                           sta   uart_data_reg     ; Write character to Port
+F965  60                                rts                     ; done
+                        ;
+                        ;end of file
+                        ;        .include 6551_irq.asm
+
+F966                     	.include sbcmon.asm         ; actual monitor
+                        ;---------------------------------------------------------------------
+                        ; Modified for RC2014
+                        ; Changes are copyright Ben Chong and freely licensed to the community
+                        ;
+                        ;---------------------------------------------------------------------
+                        ;  Original version information:
+                        ;       SBC Firmware V5.1.1, 7-4-13, by Daryl Rictor
+                        ;       5.1.1 Lite Version - removed List and Mini-Assembler & Help
+                        ;
+                        ;
+
+      = 000D            CR		=	13
+      = 000A            LF		=	10
+      = 001B            ESC             =     27          ; ESC to exit
+
+                        ;input_char      = $ff03         ; wait for input character
+                        ;check_input     = $ff06         ; scan for input (no wait), C=1 char, C=0 no character
+                        ;output_char     = $ff09         ; send 1 character
+
+                        ;*********************************************************************
+                        ;  local Zero-page variables
+                        ; Modified from Daryl's code so that we overlap with EhBASIC as little
+                        ; as possible. This was needed to debug EhBASIC during the porting process
+
+      = 00E0            ysav            =       $e0               ; 1 byte
+      = 00E1            Startaddr       =       $e1               ; 2 bytes
+      = 00E2            Startaddr_H     =       $e2
+      = 00E3            Hexdigits       =       $e3               ; 2 bytes
+      = 00E4            Hexdigits_H     =       $e4
+      = 00E5            strptr          =       $e5
+      = 00E6            strptrh         =       $e6		; temporary string pointer (not preserved across calls)
+
+                        ; Local Non-Zero Page Variables
+                        ; Unchange from Daryl's code except for addition of the interrupt vectors
+      = 0300            buffer          =       $0300             ; keybd input buffer (127 chrs max)
+      = 03D0            uart_input_vecl =       $03d0           ;
+      = 03D1            uart_input_vech =       $03d1
+      = 03D2            uart_scan_vecl        =       $03d2
+      = 03D3            uart_scan_vech        =       $03d3
+      = 03D4            uart_output_vecl        =       $03d4
+      = 03D5            uart_output_vech        =       $03d5
+      = 03E0            PCH             =       $03e0             ; hold program counter (need PCH next to PCL for Printreg routine)
+      = 03E1            PCL             =       $03e1             ;  ""
+      = 03E2            ACC             =       $03e2             ; hold Accumulator (A)
+      = 03E3            XREG            =       $03e3             ; hold X register
+      = 03E4            YREG            =       $03e4             ; hold Y register
+      = 03E5            SPTR            =       $03e5             ; hold stack pointer
+      = 03E6            PREG            =       $03e6             ; hold status register (P)
+      = 03E8            irq_vector      =       $03e8           ; Interrupt vector
+      = 03EA            nmi_vector      =       $03ea           ; NMI vector
+      = 03EB            rowcount        =       $03eb               ; 1 byte
+                        ;dlfail    	=   	$03ec    	; flag for upload failure
+                        ;old_irq_vectorl         =       $03f0           ; Where we save the old IRQ vector
+                        ;old_irq_vectorh         =       $03f1
+                        ;via6522_count           =       $03f2
+                        ;via6522_freqcntl        =       $03f3           ; Count to program into T1
+                        ;via6522_freqcnth        =       $03f4           ; Count to program into T1
+                        ;via6522_duration        =       $03f5           ; Duration in 10ms ticks
+                        ;
+
+                        ;
+                        ;
+                        ; *************************************************************************
+                        ; kernal commands
+                        ; *************************************************************************
+                        ; PrintReg     - Prints CR, the register contents, CR, then returns
+                        ; Print2Byte   - prints AAXX hex digits
+                        ; Print1Byte   - prints AA hex digits
+                        ; PrintDig     - prints A hex nibble (low 4 bits)
+                        ; Print_CR     - prints a CR (ASCII 13)and LF (ASCII 10)
+                        ; PrintXSP     - prints # of spaces in X Reg
+                        ; Print2SP     - prints 2 spaces
+                        ; Print1SP     - prints 1 space
+                        ; Input_Char    - get one byte from input port, waits for input
+                        ; Output_char   - send one byte to the console
+                        ; *************************************************************************
+                        ;
+                        ;---------------------------------------------------------------------
+                        ; Print register contents
+                        ; Changed this for better clarity
+F966  2050433D 2020413D RegData        .byte    " PC=  A=  X=  Y=  S=  P= "
+F96E  2020583D 2020593D
+F976  2020533D 2020503D
+F97E  20
+F97F  0D0A204E 56524244 FlagsData       .byte   CR,LF," NVRBDIZC",0
+F987  495A4300
+                        ;
+                        ; Prints a CR, the register contents, CR, then returns
+                        ;
+F98B  20 CDF9           PrintReg       jsr   Print_CR          ; Lead with a CR
+F98E  A2 FF                            ldx   #$ff              ;
+F990  A0 FF                            ldy   #$ff              ;
+F992  C8                Printreg1      iny                     ;
+F993  B9 66F9                          lda   Regdata,y         ;
+F996  20 09FF                          jsr   Output_char            ;
+F999  C9 3D                            cmp      #$3D            ; "="
+F99B  F0 08                            beq      printreg2
+F99D  C9 00                            cmp      #$00            ; End of FlagsData string?
+F99F  D0 F1                            bne      Printreg1       ;
+F9A1  E8                               inx
+F9A2  4C B2F9                          jmp      printreg3
+F9A5  E8                Printreg2      inx                     ;
+F9A6  BD E003                          lda   PCH,x             ;
+F9A9  20 DEF9                          jsr   Print1Byte        ;
+F9AC  E0 00                            cpx   #$00              ;
+F9AE  D0 E2                            bne   Printreg1         ;
+F9B0  F0 F3                            beq   Printreg2         ;
+                                        ; Print flags detail
+F9B2  20 CDF9           Printreg3       jsr     print_cr
+F9B5  20 00FA                           jsr     print1sp
+F9B8  CA                                dex                     ;
+F9B9  BD E003                          lda   PCH,x             ; get Preg
+F9BC  A2 08                            ldx   #$08              ;
+F9BE  2A                Printreg4      rol                     ;
+F9BF  A8                               tay                     ;
+F9C0  A9 31                            lda   #$31              ;
+F9C2  B0 02                            bcs   Printreg5         ;
+F9C4  E9 00                            sbc   #$00              ; clc implied:subtract 1
+F9C6  20 09FF           Printreg5      jsr   Output_char            ;
+F9C9  98                               tya                     ;
+F9CA  CA                               dex                     ;
+F9CB  D0 F1                            bne   Printreg4         ;
+                        ; fall into the print CR routine
+                        ;---------------------------------------------------------------------
+                        ; Print CR/LF
+                        ; Preserves A
+F9CD  48                Print_CR       PHA                     ; Save Acc
+F9CE  A9 0D                            LDA   #$0D              ; "cr"
+F9D0  20 09FF                          JSR   OUTPUT_char            ; send it
+F9D3  A9 0A                            LDA   #$0A              ; "lf"
+F9D5  20 09FF                          JSR   OUTPUT_char            ; send it
+F9D8  68                               PLA                     ; Restore Acc
+F9D9  60                               RTS                     ;
+
+                        ;---------------------------------------------------------------------
+                        ; Prints AAXX hex digits
+                        ;
+F9DA  20 DEF9           Print2Byte     JSR   Print1Byte        ;  prints AAXX hex digits
+F9DD  8A                               TXA                     ;
+
+                        ;---------------------------------------------------------------------
+                        ; Prints AA hex digits
+                        ; A=byte
+F9DE  48                Print1Byte     PHA                     ;  Save A on stack
+F9DF  4A                               LSR                     ;  MOVE UPPER NIBBLE TO LOWER
+F9E0  4A                               LSR                     ;
+F9E1  4A                               LSR                     ;
+F9E2  4A                               LSR                     ;
+F9E3  20 E7F9                          JSR   PrintDig          ; Print nibble
+F9E6  68                               PLA                     ;  Restore A
+
+                        ;---------------------------------------------------------------------
+                        ; Print lower nibble of A
+                        ;
+F9E7  84 E0             PrintDig       sty   ysav              ;  prints A hex nibble (low 4 bits)
+F9E9  29 0F                            AND   #$0F              ;
+F9EB  A8                               TAY                     ;
+F9EC  B9 B1FD                          LDA   Hexdigdata,Y      ;
+F9EF  A4 E0                            ldy   ysav              ;
+F9F1  4C 09FF                          jmp   output_char            ;
+F9F4  20 00FA           PrintXSP1      JSR   Print1SP          ;
+F9F7  CA                               dex                     ;
+F9F8  E0 00             PrintXSP       cpx   #$00              ;
+F9FA  D0 F8                            bne   PrintXSP1         ;
+F9FC  60                               rts                     ;
+
+                        ;---------------------------------------------------------------------
+                        ; Print 2 spaces
+                        ; Exit: A is changed
+F9FD  20 00FA           Print2SP       jsr   Print1SP          ; print 2 SPACES
+
+                        ;---------------------------------------------------------------------
+                        ; Print 1 space
+                        ; Exit: A is changed
+FA00  A9 20             Print1SP       LDA   #$20              ; print 1 SPACE
+FA02  4C 09FF                          JMP   OUTPUT_char            ;
+
+                        ;---------------------------------------------------------------------
+                        ;Print the string starting at (AX) until we encounter a NULL
+                        ;string can be in RAM or ROM.  It's limited to <= 255 bytes.
+                        ;
+FA05  85 E6             PrintStrAX      sta     strptr+1
+FA07  86 E5             		stx	strptr
+FA09  98                		tya
+FA0A  48                		pha
+FA0B  A0 00             		ldy	#0
+FA0D  B1 E5             PrintStrAXL1    lda     (strptr),y
+FA0F  F0 06                             beq     PrintStrAXX1      ; quit if NULL
+FA11  20 09FF               		jsr	output_char
+FA14  C8                		iny
+FA15  D0 F6                             bne     PrintStrAXL1      ; quit if > 255
+FA17  68                PrintStrAXX1    pla
+FA18  A8                		tay
+FA19  60                		rts
+
+                        ;---------------------------------------------------------------------
+                        ; Break Handler
+                        ; We're going to make this behave like the Z80 Monitor for the RC2014
+                        ; After displaying the Registers, the user can press C to continue with
+                        ; program execution, or ESC to back to the Monitor
+                        ; What is missing is the C monitor command to continue program execution
+                        ; This is because there is only one stack on the 6502 whereas the Z80
+                        ; can have a Monitor stack and a user application stack.
+FA1A                    BRKroutine
+FA1A  68                                pla                     ; X
+FA1B  AA                                tax                     ;
+FA1C  68                                pla                     ; A
+FA1D  8D E203                           sta     ACC             ; save A
+FA20  8E E303                           stx     Xreg            ; save X
+FA23  8C E403                           sty     Yreg            ; save Y
+FA26  68                                pla                     ;
+FA27  8D E603                           sta     Preg            ; save P
+FA2A  68                                pla                     ; PCL
+FA2B  A8                                tay                     ; PCL in Y
+                        ;                sty     realpcl
+FA2C  68                                pla                     ; PCH
+FA2D  AA                                tax                     ; PCH in X
+                        ;                stx     realpch
+FA2E  98                                tya                     ; PCL in A
+FA2F  38                                sec                     ;
+FA30  E9 02                             sbc     #$02            ;
+FA32  8D E103                           sta     PCL             ; backup to BRK cmd
+FA35  B0 01                             bcs     Brk2            ;
+FA37  CA                                dex                     ;
+FA38                    Brk2
+FA38  8E E003                           stx     PCH             ; save PC
+FA3B  BA                                TSX                     ; get stack pointer
+FA3C  8E E503                           stx     SPtr            ; save stack pointer
+FA3F  20 8BF9                           jsr     PrintReg        ; dump register contents
+                                        ; Insert C and ESC prompt and handling here
+                                        ; We'll run cli first so that user can
+                                        ; input C or ESC
+FA42  58                                cli                     ; enable interrupts again
+                                        ; Print prompt
+FA43  A9 FA                             lda     #>brkprompt
+FA45  A2 7C                             ldx     #<brkprompt
+FA47  20 05FA                           jsr     printstrax
+FA4A                    brknotc                                 ;
+FA4A  20 03FF                           jsr     input_char
+FA4D  C9 1B                             cmp     #27             ; Is it ESC?
+FA4F  F0 28                             beq     brkexit2mon
+FA51  29 5F                             and     #$5F
+FA53  C9 43                             cmp     #'C'
+FA55  D0 F3                             bne     brknotc         ; Retry if invalid command
+                                        ; Else continue to program execution
+                                        ; Here, we need to restore stuff to stack and registers then RTI...
+FA57  78                                sei     ; Disable interrupts first
+FA58  AE E503                           ldx     sptr
+FA5B  9A                                txs
+FA5C  AC E003                           ldy     pch
+FA5F  AE E103                           ldx     pcl
+                                        ; Increment PC to instruction just after BRK
+                                        ; We'll assume that BRK is a single byte instruction
+FA62  E8                                inx
+FA63  D0 01                             bne     brknotz
+FA65  C8                                iny
+FA66                    brknotz
+FA66  98                                tya
+FA67  48                                pha             ; High PC
+FA68  8A                                txa
+FA69  48                                pha             ; Low PC
+                                        ; Restore the other CPU styff
+FA6A  AD E603                           lda     Preg
+FA6D  48                                pha
+FA6E  AC E403                           ldy     Yreg
+FA71  AE E303                           ldx     Xreg
+FA74  AD E203                           lda     ACC
+FA77  58                                cli             ; Re-enable interrupts before returning
+FA78  40                                rti
+
+                                        ; The Monitor entry point already sets up the stack
+FA79                    brkexit2mon
+FA79  4C B3FA                           jmp   Monitor           ; start the monitor
+
+FA7C  0D0A5072 65737320 brkprompt       .byte   CR, LF, "Press C to continue or ESC to return to Monitor",CR,LF,0
+FA84  4320746F 20636F6E
+FA8C  74696E75 65206F72
+FA94  20455343 20746F20
+FA9C  72657475 726E2074
+FAA4  6F204D6F 6E69746F
+FAAC  720D0A00
+
+                        ;*************************************************************************
+                        ;
+                        ; Monitor Program
+                        ; The flow of the monitor is adapted from the one for the Z80
+                        ;
+                        ;**************************************************************************
+
+FAB0                    MonitorBoot
+FAB0  20 A6FD                           JSR   Version           ;
+FAB3                    SYSjmp                                 ; Added for EhBASIC
+                                        ; Primary monitor entry point
+FAB3                    Monitor
+FAB3  A2 FF                             LDX     #$FF              ;
+FAB5  9A                                TXS		        ;  Init the stack
+FAB6                    monitor_loop
+FAB6  20 CDF9                           jsr    print_cr
+FAB9  A9 FD                             lda     #>monitorprompt
+FABB  A2 D7                             ldx     #<monitorprompt
+FABD  20 05FA                           jsr     printstrax
+                                        ; Init monitor variables
+FAC0  A9 00                             lda     #$00              ;
+FAC2  85 E3                             sta     Hexdigits         ;  holds parsed hex
+FAC4  85 E4                             sta     Hexdigits_H       ;
+FAC6  20 03FF                           jsr    input_char        ; Get user input; blocking
+FAC9  C9 20                             cmp     #32             ; Control character?
+FACB  90 03                             bcc     ml_not_printable    ; not printable
+FACD  20 09FF                           jsr    output_char          ; Echo
+FAD0                    ml_not_printable
+                        ;                cmp     #':'            ; HEX upload?
+                        ;                bne     nothex
+                        ;                jmp     HexUpLd
+                        ;nothex
+FAD0  C9 3F                             cmp     #'?'
+FAD2  D0 03                             bne     nothelp
+FAD4  4C 6AFC                           jmp     go_help
+FAD7                    nothelp
+FAD7  29 5F                             and     #$5f            ; Convert to upper case
+FAD9  C9 47                             cmp     #'G'            ; Go?
+FADB  D0 03                             bne     notgo
+FADD  4C F8FA                           jmp     go_exec         ; Jump to user program
+FAE0  C9 45             notgo           cmp     #'E'
+FAE2  D0 03                             bne     notmem
+FAE4  4C 86FC                           jmp     go_mem
+FAE7                    notmem
+FAE7  C9 44                             cmp     #'D'
+FAE9  D0 03                             bne     notdump
+FAEB  4C 00FD                           jmp     go_dump
+FAEE                    notdump
+FAEE  C9 55                             cmp     #'U'
+FAF0  D0 03                             bne     notupload
+FAF2  4C 00F8                           jmp     hexupld
+FAF5                    notupload
+FAF5  4C B3FA                           jmp     monitor ;_loop    ; Reloop if invalid command
+
+                        ;---------------------------------------------------------------------
+                        ; Go and run a program...
+FAF8                    go_exec
+FAF8  20 00FA                   jsr     print1sp        ; Space out
+FAFB  20 2DFB                   jsr     get_word        ; Grab address
+FAFE  90 04                     bcc     ge_0            ; All hex chars
+FB00  C9 0D                     cmp     #$0d            ; Is the last char RETURN?
+FB02  D0 1C                     bne     ge_end          ; No, then quit
+FB04                    ge_0
+                        ;        cpy     #$00            ; Did we grab a whole word?
+                        ;        bne     ge_end
+                                ; Print out where we are going to jump to
+FB04  A9 FB                     lda	#>ge_string
+FB06  A2 23             	ldx	#<ge_string
+FB08  20 05FA           	jsr     PrintStrAX
+FB0B  A5 E4                     lda     hexdigits_h
+FB0D  A6 E3                     ldx     hexdigits
+FB0F  20 DAF9                   jsr     print2byte
+FB12  20 CDF9                   jsr     print_cr
+FB15  78                        sei                     ; Disable interrupt
+                                ; Set the monitor return address on stack
+                                ; This is so that user program can do an rts to return to monitor
+                                ; Entry point to monitor is $ff00. Stack value is 1 less than actual
+FB16  A9 FE                     lda     #$fe
+FB18  48                        pha
+FB19  A9 FF                     lda     #$ff
+FB1B  48                        pha
+                                ; Indirect jump to user program
+FB1C  58                        cli                     ; Reenable interrupt
+FB1D  6C E300                   jmp     (Hexdigits)
+
+FB20                    ge_end
+FB20  4C B3FA                   jmp     monitor         ; return to Monitor, resetting stack pointer
+
+FB23  2050433D 00       ge_string       .byte   " PC=",0
+
+                        ;---------------------------------------------------------------------
+                        ; Get 8-bit byte
+                        ; Y is the nibble count
+                        ; Exit: Y=0 if we got all the nibbles
+FB28                    get_byte
+FB28  A0 02                     ldy     #$02
+FB2A  4C 2FFB                   jmp     get_byte_start
+
+                        ;---------------------------------------------------------------------
+                        ; Get 16-bit word
+                        ; Exit: Y=0 if we got all the nibbles
+                        ;       CY=1 if the last char is non-hex
+FB2D                    get_word
+FB2D  A0 04                     ldy     #$04
+FB2F                    get_byte_start                  ; Y contains nibble count
+FB2F  A9 00                     lda     #$00              ; Init hex buffer
+FB31  85 E3                     sta     Hexdigits         ; Holds parsed hex
+FB33  85 E4                     sta     Hexdigits_H
+FB35                    gw_loop0
+FB35  20 4CFB                   jsr     get_hex_char
+FB38  B0 11                     bcs     gw_end          ; If non hex char, abort
+                                ; Build a byte with the first nibble already in A
+                                ; Entry: A = first hex nibble
+                                ;       Y = 2
+FB3A                    build_byte
+FB3A  A2 04                     LDX     #$04              ;
+FB3C                    gw_loop1                        ; Insert nibble
+FB3C  06 E3                     ASL     Hexdigits         ;
+FB3E  26 E4                     ROL     Hexdigits_H       ;
+FB40  CA                        DEX                     ;
+FB41  D0 F9                     BNE     gw_loop1        ;
+FB43  05 E3                     ora     Hexdigits         ;
+FB45  85 E3                     sta     Hexdigits
+FB47  88                        dey
+FB48  D0 EB                     bne     gw_loop0        ; Loop until we get all in
+FB4A  18                        clc                     ; Clear carry
+FB4B                    gw_end
+FB4B  60                        rts
+
+                        ;---------------------------------------------------------------------
+                        ; Compare Result	N	Z	C
+                        ; A, X, or Y < Memory	*	0	0
+                        ; A, X, or Y = Memory	0	1	1
+                        ; A, X, or Y > Memory	*	0	1
+                        ;---------------------------------------------------------------------
+                        ; Get hex char
+                        ; C=0 if valid
+                        ; C=1 if invalid
+FB4C                    get_hex_char
+FB4C  20 03FF                   jsr     input_char       ; Get character, blocking
+FB4F  C9 20                     cmp     #32             ; Control character?
+FB51  90 03                     bcc     ghc_not_printable    ; not printable
+FB53  20 09FF                   jsr     output_char          ; Echo character
+FB56                    ghc_not_printable
+                                ; Character in A
+                                ; Check if it is a hex
+FB56                    check_hex_char
+FB56  C9 30                     cmp     #'0'
+FB58  90 19                     bcc     ghc_abort       ; A<'0'
+FB5A  C9 3A                     cmp     #('9'+1)
+FB5C  B0 06                     bcs     ghc_notnumber   ; A>=('9'+1)
+                                ; Number
+FB5E  38                        sec
+FB5F  E9 30                     sbc     #'0'
+FB61  4C 71FB                   jmp     ghc_done
+FB64                    ghc_notnumber
+FB64  29 5F                     and     #$5f            ; convert to upper
+FB66  C9 41                     cmp     #'A'
+FB68  90 09                     bcc     ghc_abort       ; A<'A'
+FB6A  C9 47                     cmp     #('F'+1)
+FB6C  B0 05                     bcs     ghc_abort       ; A>=('F'+1)
+FB6E  38                        sec
+FB6F  E9 37                     sbc     #('A'-10)
+FB71                    ghc_done
+FB71  18                        clc
+FB72  60                        rts
+FB73                    ghc_abort
+FB73  38                        sec     ; Set carry
+FB74  60                        rts
+
+                        ;---------------------------------------------------------------------
+
+FB75                    helptxt
+FB75  0D0A3635 3032204D                 .byte   $0d,$0a,"6502 Monitor RC2014 v0.2.2"
+FB7D  6F6E6974 6F722052
+FB85  43323031 34207630
+FB8D  2E322E32
+FB91  0D0A3F20 20202020                 .byte   CR,LF,"?           Print this help"
+FB99  20202020 20205072
+FBA1  696E7420 74686973
+FBA9  2068656C 70
+FBAE  0D0A4420 58585858 		.byte	CR,LF,"D XXXX      Dump memory from XXXX"
+FBB6  20202020 20204475
+FBBE  6D70206D 656D6F72
+FBC6  79206672 6F6D2058
+FBCE  585858
+FBD1  0D0A4520 58585858 		.byte	CR,LF,"E XXXX      Edit memory from XXXX"
+FBD9  20202020 20204564
+FBE1  6974206D 656D6F72
+FBE9  79206672 6F6D2058
+FBF1  585858
+FBF4  0D0A4720 58585858 		.byte	CR,LF,"G XXXX      Go execute from XXXX"
+FBFC  20202020 2020476F
+FC04  20657865 63757465
+FC0C  2066726F 6D205858
+FC14  5858
+FC16  0D0A5520 20202020 		.byte	CR,LF,"U           Upload Intel HEX file",0
+FC1E  20202020 20205570
+FC26  6C6F6164 20496E74
+FC2E  656C2048 45582066
+FC36  696C6500
+FC3A                    helptxt2:
+FC3A  0D0A2020 20202020 		.byte   CR,LF,"            ESC to quit when upload is done"
+FC42  20202020 20204553
+FC4A  4320746F 20717569
+FC52  74207768 656E2075
+FC5A  706C6F61 64206973
+FC62  20646F6E 65
+FC67  0D0A                              .byte   $0d, $0a
+FC69  00                                .byte   $00	
+
+                        ;---------------------------------------------------------------------
+
+FC6A                    go_help
+FC6A  A9 0D                     lda     #CR
+FC6C  A2 FF                     ldx   #$ff              ; set txt pointer
+FC6E                    gh_loop
+FC6E  E8                        inx                     ;
+FC6F  20 09FF                   jsr   Output_char            ; put character to Port
+FC72  BD 75FB                   lda   helptxt,x         ; get message text
+FC75  D0 F7                     bne   gh_loop      ;
+FC77  AA                        tax             ; Init x = 0
+FC78                    gh_loop2
+FC78  BD 3AFC                   lda     helptxt2, x
+FC7B  F0 06                     beq     gh_end
+FC7D  20 09FF                   jsr     output_char
+FC80  E8                        inx
+FC81  D0 F5                     bne     gh_loop2
+FC83                    gh_end
+FC83  4C B6FA                   jmp     monitor_loop
+
+                        ;---------------------------------------------------------------------
+                        ; Display byte at an address
+                        ; Change byte at the address
+                        ; ENTER to go to next address
+                        ; ESC to escape back to monitor
+                        ; enter hex value to replace current value and skip to next address
+
+FC86                    go_mem
+FC86  A9 00                     lda     #$00
+FC88  85 E1                     sta     Startaddr
+FC8A  85 E2                     sta     Startaddr_H
+FC8C  20 00FA                   jsr     print1sp        ; Space out
+                                ; Get address
+FC8F  20 2DFB                   jsr     get_word
+FC92  90 04                     bcc     gm_0            ; All hex chars
+FC94  C9 0D                     cmp     #$0d             ; Is the last char RETURN?
+FC96  D0 65                     bne     gm_end          ; No, then quit
+FC98                    gm_0
+                        ;        cpy     #$00            ; Did we grab a whole word?
+                        ;        bne     gm_end
+                                ; Copy the word to the address pointer
+FC98  A5 E3                     lda     Hexdigits
+FC9A  85 E1                     sta     Startaddr
+FC9C  A5 E4                     lda     Hexdigits_H
+FC9E  85 E2                     sta     Startaddr_H
+FCA0                    gm_loop0
+FCA0  20 CDF9                   jsr     print_cr       ; Go to next line
+FCA3                    gm_loop1
+                                ; Print address
+FCA3  A5 E2                     lda     Startaddr_H
+FCA5  A6 E1                     ldx     Startaddr
+FCA7  20 DAF9                   jsr     print2byte
+FCAA  20 00FA                   jsr     print1sp        ; 1 Space
+FCAD  A9 3A                     lda     #':'
+FCAF  20 09FF                   jsr     output_char
+FCB2  20 00FA                   jsr     print1sp
+                                ; Print byte at address
+FCB5  A0 00                     ldy     #$00
+FCB7  B1 E1                     lda     (Startaddr), y  ; get byte at address
+FCB9  20 DEF9                   jsr     Print1Byte      ; Print byte
+FCBC  20 00FA                   jsr     print1sp
+                                ; Grab command
+                                ; Next is either ESC (quit), ENTER (next) or HEX value
+FCBF                    gm_loop
+                                ; Init hex buffer first
+FCBF  A9 00                     lda     #$00
+FCC1  85 E3                     sta     Hexdigits
+FCC3  85 E4                     sta     Hexdigits_H
+                                ; Get command or hex
+FCC5  20 03FF                   jsr     input_char       ; Get a char
+FCC8  C9 1B                     cmp     #27             ; ESC
+FCCA  F0 31                     beq      gm_end         ; ESC so abort
+FCCC  C9 0D                     cmp     #$0d            ; ENTER
+FCCE  D0 09                     bne     gm_not_enter    ; Not ENTER, data entry mode?
+                                ;
+                                ; ENTER, increment Startaddr to next memory address
+                                ;
+FCD0                    gm_next_address
+FCD0  E6 E1                     inc     Startaddr
+FCD2  D0 02                     bne     gm_inc_done
+FCD4  E6 E2                     inc     Startaddr_H
+FCD6                    gm_inc_done
+FCD6  4C A0FC                   jmp     gm_loop0        ; Get next byte and display it
+
+                                ; Check if hex
+                                ; A=first character
+FCD9                    gm_not_enter
+FCD9  A8                        tay                     ; Save char
+                                ; Char in A
+FCDA  20 56FB                   jsr     check_hex_char
+FCDD  B0 C1                     bcs     gm_loop0        ; Not hex, reprint line
+FCDF  48                        pha                     ; Save hex value
+FCE0  98                        tya                     ; Get original char
+FCE1  20 09FF                   jsr     output_char          ; Echo it
+FCE4  68                        pla                     ; Restore hex value
+FCE5  A0 02                     ldy     #$02
+FCE7  20 3AFB                   jsr     build_byte      ; Get the full byte
+FCEA  C0 00                     cpy     #$00            ; Are we done?
+FCEC  D0 B2                     bne     gm_loop0
+FCEE  91 E1                     sta     (Startaddr), y  ; Store byte at address
+FCF0  20 00FA                   jsr     print1sp        ; Print space
+FCF3  A0 00                     ldy     #$00
+FCF5  B1 E1                     lda     (Startaddr), y  ; get byte at address
+FCF7  20 DEF9                   jsr     Print1Byte      ; Print byte at address
+FCFA  4C D0FC                   jmp     gm_next_address ; Next
+
+FCFD                    gm_end
+FCFD  4C B6FA                   jmp     monitor_loop
+
+
+                        ;---------------------------------------------------------------------
+
+FD00                    go_dump
+FD00                    dump_mem
+FD00  A9 00                     lda     #$00
+FD02  85 E1                     sta     Startaddr
+FD04  85 E2                     sta     Startaddr_H
+FD06  20 00FA                   jsr     print1sp        ; Space out
+                                ; Get address
+FD09  20 2DFB                   jsr     get_word
+FD0C  90 04                     bcc     dm_0            ; All hex chars
+FD0E  C9 0D                     cmp     #$0d             ; Is the last char RETURN?
+FD10  D0 6A                     bne     dm_end          ; No, then quit
+FD12                    dm_0
+                        ;        cpy     #$00            ; Did we grab a whole word?
+                        ;        bne     dm_end
+                                ; Copy the word to the address pointer
+FD12  A5 E3                     lda     Hexdigits
+FD14  85 E1                     sta     Startaddr
+FD16  A5 E4                     lda     Hexdigits_H
+FD18  85 E2                     sta     Startaddr_H
+FD1A                    dm_loopx
+FD1A  A9 10                     lda     #16
+FD1C  8D EB03                   sta     rowcount
+FD1F                    dm_loop0
+FD1F  20 CDF9                   jsr     print_cr       ; Go to next line
+FD22                    dm_loop1
+                                ; Print address
+FD22  A5 E2                     lda     Startaddr_H
+FD24  A6 E1                     ldx     Startaddr
+FD26  20 DAF9                   jsr     print2byte
+FD29  20 FDF9                   jsr     print2sp        ; 1 Space
+                                ; Read 16 bytes
+FD2C  A0 00                     ldy     #$00
+FD2E  A2 10                     ldx     #$10
+FD30                    dm_loop2
+FD30  B1 E1                     lda     (Startaddr), y
+FD32  20 DEF9                   jsr     print1byte
+FD35  20 00FA                   jsr     print1sp
+FD38  C8                        iny
+FD39  CA                        dex
+FD3A  D0 F4                     bne     dm_loop2
+                                ; Next section
+FD3C  A9 3B                     lda     #';'
+FD3E  20 09FF                   jsr    output_char
+FD41  20 00FA                   jsr     print1sp
+FD44  A0 00                     ldy     #$00
+FD46  A2 10                     ldx     #$10
+FD48                    dm_loop3
+FD48  B1 E1                     lda     (Startaddr), y  ; Get byte
+FD4A  C9 20                     cmp     #32             ; Control character?
+FD4C  90 0A                     bcc     not_printable    ; not printable
+FD4E  C9 7F                     cmp     #127            ; non-ascii characters?
+FD50  B0 06                     bcs     not_printable
+FD52                    dm_xx
+FD52  20 09FF                   jsr     output_char     ; Print character
+FD55  4C 5DFD                   jmp     dm_next0
+FD58                    not_printable
+FD58  A9 2E                     lda     #'.'            ; Print . instead
+FD5A  4C 52FD                   jmp     dm_xx
+FD5D                    dm_next0                        ; Incrememt address pointer
+FD5D  E6 E1                     inc     startaddr
+FD5F  D0 02                     bne     dm_next1
+FD61  E6 E2                     inc     startaddr_h
+FD63                    dm_next1                        ; Have we done 16 bytes?
+FD63  CA                        dex
+FD64  D0 E2                     bne     dm_loop3        ; Reloop if not
+FD66  20 CDF9                   jsr     print_cr        ; Go to next row
+FD69  CE EB03                   dec     rowcount        ; Have we done 16 rows?
+FD6C  D0 B4                     bne     dm_loop1        ; Next row if not
+FD6E  A9 FD                     lda	#>dm_prompt     ; Print prompt
+FD70  A2 7F             	ldx	#<dm_prompt
+FD72  20 0CFF           	jsr     $ff0c
+FD75  20 03FF           	jsr     input_char      ; Get user input
+FD78  C9 1B             	cmp     #27             ; Escape?
+FD7A  D0 9E             	bne     dm_loopx        ; Next 16 lines
+FD7C                    dm_end
+FD7C  4C B6FA                   jmp     monitor_loop
+
+FD7F  50726573 7320616E dm_prompt       .byte	"Press any key to continue, ESC to quit",0
+FD87  79206B65 7920746F
+FD8F  20636F6E 74696E75
+FD97  652C2045 53432074
+FD9F  6F207175 697400
+
+                        ;---------------------------------------------------------------------
+                        ; Print version
+FDA6  20 CDF9           Version         jsr     Print_CR          ;
+FDA9  A9 FD                             lda	#>buildtxt
+FDAB  A2 C1             		ldx	#<buildtxt
+FDAD  20 05FA                           jsr     PrintStrAX
+FDB0  60                                rts                     ;
+
+                        ;
+                        ;-----------DATA TABLES ------------------------------------------------
+                        ;
+FDB1  30313233 34353637 Hexdigdata     .byte "0123456789ABCDEF";hex char table
+FDB9  38394142 43444546
+
+                        ;---------------------------------------------------------------------
+                        ;
+FDC1                    buildtxt
+FDC1  0D0A                              .byte   $0d, $0a
+FDC3  36353032 20435055                 .byte   "6502 CPU for RC2014"
+FDCB  20666F72 20524332
+FDD3  303134
+FDD6  00                                .byte   $00
+                        	
+FDD7  4D6F6E69 746F7220 monitorprompt   .byte   "Monitor >"
+FDDF  3E
+FDE0  00                                .byte   $00
+
+                        ;end of file
+
+                                ; -----------------------------
+                                ; Only this file defines absolute addresses
+FDE1                    	.include reset.asm         ; Reset & IRQ handler
+                        ;---------------------------------------------------------------------
+                        ; Modified for RC2014
+                        ; Changes are copyright Ben Chong and freely licensed to the community
+                        ;
+                        ;****************************************************************************
+                        ; Reset, Interrupt, & Break Handlers
+                        ;****************************************************************************
+                                ; Put this in the last page of ROM
+FF00                            .org    $ff00
+
+                        ; Vector table
+
+                                ; Monitor vector $ff00
+FF00  4C B3FA                           jmp     Monitor
+
+FF03                            .org $ff03
+FF03  6C D003           input_char      jmp     (uart_input_vecl)       ; wait for input character
+                                ; $ff06
+FF06  6C D203           check_input     jmp     (uart_scan_vecl)        ; scan for input (no wait), C=1 char, C=0 no character
+                                ; $ff09
+FF09  6C D403           output_char     jmp     (uart_output_vecl)      ; send 1 character
+                                ; $ff0c
+FF0C  4C 05FA           printstring     jmp     PrintStrAX
+
+                        ;--------------Reset handler----------------------------------------------
+
+FF0F  78                reset          sei                     ; diable interupts
+FF10  D8                               cld                     ; clear decimal mode
+FF11  A2 FF                            ldx      #$FF              ;
+FF13  9A                               txs                     ; init stack pointer
+
+                                        ; Initialize interrupt vectors
+                                        ; Use null_irq and similar NMI handlers first
+FF14  A9 FF                             lda     #>null_irq
+FF16  A2 5B                             ldx     #<null_irq
+FF18  8E E803                           stx      irq_vector
+FF1B  8D E903                           sta      irq_vector+1
+FF1E  A9 FF                             lda     #>nmi_handler
+FF20  A2 5E                             ldx     #<nmi_handler
+FF22  8E EA03                           stx      nmi_vector
+FF25  8D EB03                           sta      nmi_vector+1
+                                        ; Init the I/O devices
+                                        ; At this point, the actual IRQ handling may be set up
+FF28  20 31F9                           jsr     uart_init	
+
+                                        ; Set up default handlers
+FF2B  A9 F9                             lda     #>uart_input
+FF2D  A2 41                             ldx     #<uart_input
+FF2F  8E D003                           stx      uart_input_vecl
+FF32  8D D103                           sta      uart_input_vech
+FF35  A9 F9                             lda     #>uart_scan
+FF37  A2 4C                             ldx     #<uart_scan
+FF39  8E D203                           stx      uart_scan_vecl
+FF3C  8D D303                           sta      uart_scan_vech
+FF3F  A9 F9                             lda     #>uart_output
+FF41  A2 59                             ldx     #<uart_output
+FF43  8E D403                           stx      uart_output_vecl
+FF46  8D D503                           sta      uart_output_vech
+
+FF49  58                               cli                      ; Enable interrupt
+FF4A  4C B0FA                          jmp      MonitorBoot     ; Monitor for cold reset
+
+                        ; -------------------------------------
+                        ; Interrupt or BRK entry point
+FF4D                    irqbrkhandler
+FF4D  48                                PHA                     ; Save A
+FF4E  8A                                TXA  	                ;
+FF4F  48                                PHA                     ; Save X
+FF50  BA                                TSX                     ; get stack pointer
+FF51  BD 0301                           LDA     $0103,X           ; load INT-P Reg off stack
+FF54  29 10                             AND     #$10              ; mask BRK
+FF56  D0 0A                             BNE     BrkCmd            ; BRK CMD
+                                        ; Not BRK, so it must be a real interrupt
+                                        ; The Interrupt handler needs to know that
+                                        ; A and X are already on the stack
+FF58  6C E803           irqjump         jmp     (irq_vector)    ; Jump to indirect handler
+
+                                        ; Default IRQ handler, before we return, restore X and A
+FF5B                    null_irq
+FF5B  68                                pla                     ; Restore X
+FF5C  AA                                tax                     ; 		
+FF5D  68                                pla                     ; Restore A
+                                        ; Then return from interrupt
+FF5E                    nmi_handler
+FF5E  40                                rti                     ; Null Interrupt return
+
+                        ; -------------------------------------
+                        ; NMI entry point
+FF5F  6C EA03           nmijump         jmp     (nmi_vector)
+
+                        ; -------------------------------------
+                        ; BRK handler
+                        ; We'll leave X and A on the stack and have the break handler deal with them
+FF62                    BrkCmd
+                        ;                pla                     ; X
+                        ;                tax                     ;
+                        ;                pla                     ; A
+FF62  4C 1AFA                           jmp   BRKroutine        ; patch in user BRK routine
+
+                        ;
+                        ;  NMIjmp      =     $FFFA
+                        ;  RESjmp      =     $FFFC
+                        ;  INTjmp      =     $FFFE
+
+FFFA                            .org    $fffa
+FFFA  5FFF                             .word  nmijump
+FFFC  0FFF                             .word  reset
+FFFE  4DFF                             .word  irqbrkhandler
+                        ;end of file
+
+0000                    	.end
+ACC                03E2 E  ACIA1_INIT         F931    ACIA1_INPUT        F941
+ACIA1_OUTPUT       F959    ACIA1_SCAN         F94C    BC_1               F860
+BRK2               FA38    BRKCMD             FF62    BRKEXIT2MON        FA79
+BRKNOTC            FA4A    BRKNOTZ            FA66    BRKPROMPT          FA7C
+BRKROUTINE         FA1A    BUFFER             0300 E  BUILDTXT           FDC1
+BUILD_BYTE         FB3A    BYTECOUNT_H        00F1 E  BYTECOUNT_L        00F0 E
+CHECK_HEX_CHAR     FB56    CHECK_INPUT        FF06    CHKSUM             00EB E
+CR                 000D E  DLFAIL             03EC E  DM_0               FD12
+DM_END             FD7C    DM_LOOP0           FD1F    DM_LOOP1           FD22
+DM_LOOP2           FD30    DM_LOOP3           FD48    DM_LOOPX           FD1A
+DM_NEXT0           FD5D    DM_NEXT1           FD63    DM_PROMPT          FD7F
+DM_XX              FD52    DUMP_MEM           FD00    ESC                001B E
+FLAGSDATA          F97F    GETHEX             F8C7    GETNIBL            F8D6
+GET_BYTE           FB28    GET_BYTE_START     FB2F    GET_HEX_CHAR       FB4C
+GET_WORD           FB2D    GE_0               FB04    GE_END             FB20
+GE_STRING          FB23    GHC_ABORT          FB73    GHC_DONE           FB71
+GHC_NOTNUMBER      FB64    GHC_NOT_PRINTABLE  FB56    GH_END             FC83
+GH_LOOP            FC6E    GH_LOOP2           FC78    GH_QUIT            F8EB
+GM_0               FC98    GM_END             FCFD    GM_INC_DONE        FCD6
+GM_LOOP            FCBF    GM_LOOP0           FCA0    GM_LOOP1           FCA3
+GM_NEXT_ADDRESS    FCD0    GM_NOT_ENTER       FCD9    GO_DUMP            FD00
+GO_EXEC            FAF8    GO_HELP            FC6A    GO_MEM             FC86
+GW_END             FB4B    GW_LOOP0           FB35    GW_LOOP1           FB3C
+HDDLF1             F87B    HDER1              F886    HDER3              F8A7
+HDERNX             F8C4    HDEROK             F8B6    HDLP1              F853
+HDWRECS            F810    HELPTXT            FB75    HELPTXT2           FC3A
+HEXDIGDATA         FDB1    HEXDIGITS          00E3 E  HEXDIGITS_H        00E4 E
+HEXUPLD            F800    HUL0               F81A    HUL1               F817
+HUL_DONE           F8A7    HUL_ENDREC         F895    IHEX               F81E
+INPUT_CHAR         FF03    IRQBRKHANDLER      FF4D    IRQJUMP            FF58
+IRQ_VECTOR         03E8 E  LF                 000A E  MKNNH              F8E3
+ML_NOT_PRINTABLE   FAD0    MONITOR            FAB3    MONITORBOOT        FAB0
+MONITORPROMPT      FDD7    MONITOR_LOOP       FAB6    MSGSTART           F915
+MSGUPLOADFAIL      F8ED    MSGUPLOADOK        F8FF    NMIJUMP            FF5F
+NMI_HANDLER        FF5E    NMI_VECTOR         03EA E  NOTDUMP            FAEE
+NOTGO              FAE0    NOTHELP            FAD7    NOTMEM             FAE7
+NOTUPLOAD          FAF5    NOT_PRINTABLE      FD58    NULL_IRQ           FF5B
+OUTPUT_CHAR        FF09    PCH                03E0 E  PCL                03E1 E
+PREG               03E6 E  PRINT1BYTE         F9DE    PRINT1SP           FA00
+PRINT2BYTE         F9DA    PRINT2SP           F9FD    PRINTDIG           F9E7
+PRINTREG           F98B    PRINTREG1          F992    PRINTREG2          F9A5
+PRINTREG3          F9B2    PRINTREG4          F9BE    PRINTREG5          F9C6
+PRINTSTRAX         FA05    PRINTSTRAXL1       FA0D    PRINTSTRAXX1       FA17
+PRINTSTRING        FF0C    PRINTXSP           F9F8    PRINTXSP1          F9F4
+PRINT_CR           F9CD    RECLEN             00EC E  RECTYPE            00EF E
+REGDATA            F966    RESET              FF0F    ROWCOUNT           03EB E
+SPTR               03E5 E  STARTADDR          00E1 E  STARTADDR_H        00E2 E
+START_HI           00EE E  START_LO           00ED E  STRPTR             00E5 E
+STRPTRH            00E6 E  SYSJMP             FAB3    TEMP               00EA E
+UART_BASE          C0A0 E  UART_COMMAND_REG   C0A2 E  UART_CONTROL_REG   C0A3 E
+UART_DATA_REG      C0A0 E  UART_INIT          F931    UART_INPUT         F941
+UART_INPUT_VECH    03D1 E  UART_INPUT_VECL    03D0 E  UART_OUT1          F95A
+UART_OUTPUT        F959    UART_OUTPUT_VECH   03D5 E  UART_OUTPUT_VECL   03D4 E
+UART_SCAN          F94C    UART_SCAN2         F958    UART_SCAN_VECH     03D3 E
+UART_SCAN_VECL     03D2 E  UART_STATUS_REG    C0A1 E  UART_XMIT          C0A0 E
+VERSION            FDA6    XREG               03E3 E  YREG               03E4 E
+YSAV               00E0 E

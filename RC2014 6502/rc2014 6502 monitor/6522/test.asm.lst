@@ -1,0 +1,353 @@
+                        ; Test
+
+
+                        ; wait for input character
+      = FF03            input_char      =       $ff03
+
+                        ; scan for input (no wait), C=1 char, C=0 no character
+      = FF06            check_input     =       $ff06
+
+                        ; Send 1 character
+      = FF09            output_char     =       $ff09
+
+2000                            .org    $2000
+2000                    reloop_scale
+2000  20 E921                   jsr     play_scale
+                                ; Press a key to stop the scale
+2003  20 06FF                   jsr     check_input
+2006  90 F8                     bcc     reloop_scale
+2008  20 5122                   jsr     play_doe_a_deer
+200B  4C 00FF                   jmp     $ff00           ; return to monitor
+
+2100                            .org    $2100
+                                ; Tests out the free running 1 second timer
+2100                    test_timer
+2100  20 2621                   jsr     via6522_init
+
+2103  A9 41                     lda     #'A'
+2105  20 09FF                   jsr     output_char
+
+2108                    oc_loop:
+2108  20 6521                   jsr     via6522_test_cont1      ; Set up continuous 1s interrupts
+210B                    oc_loop2:
+210B  AD F203                   lda     via6522_count           ; Check the counter
+210E  C9 64                     cmp     #100                    ; Are we there yet?
+2110  B0 07                     bcs     oc_1sec
+2112  20 06FF                   jsr     check_input
+2115  90 F4                     bcc     oc_loop2
+2117  B0 07                     bcs     oc_outchar
+2119                    oc_1sec:
+                                ; We're at 1sec
+2119  A9 00                     lda     #$00
+211B  8D F203                   sta     via6522_count
+211E  A9 23                     lda     #'#'
+2120                    oc_outchar:
+2120  20 09FF                   jsr     output_char
+2123  4C 0B21                   jmp     oc_loop2                ; Loop forever
+
+
+
+
+2126                            .include via6522.asm
+                        ;---------------------------------------------------------------------
+                        ; via6522.asm
+                        ; Various 6522 routines
+                        ; Copyright Ben Chong and freely licensed to the community
+                        ;
+                        ;---------------------------------------------------------------------
+
+                        ; Comment out this next line if you are building this file with the Monitor/Debugger
+      = 03E8            irq_vector      =       $03e8           ; Interrupt vector
+
+                        ; Handle interrupt chaining
+      = 03F0            old_irq_vectorl         =       $03f0           ; Where we save the old IRQ vector
+      = 03F1            old_irq_vectorh         =       $03f1
+
+                        ; The software counter
+      = 03F2            via6522_count           =       $03f2
+
+                        ; Tone machine variables
+      = 03F3            via6522_freqcntl        =       $03f3           ; Count to program into T1
+      = 03F4            via6522_freqcnth        =       $03f4           ; Count to program into T1
+      = 03F5            via6522_duration        =       $03f5           ; Duration in 10ms ticks
+
+                        ; Change via_base depending on your hardware set up
+                        ; via_base        =       $c070
+      = 8000            via_base        =       $8000
+                        ; Definition of 6522 registers
+      = 8000            iorb_reg        =       via_base+0
+      = 8001            iora_reg        =       via_base+1
+      = 8002            ddrb_reg        =       via_base+2
+      = 8003            ddra_reg        =       via_base+3
+      = 8004            t1cl_reg        =       via_base+4
+      = 8005            t1ch_reg        =       via_base+5
+      = 8006            t1ll_reg        =       via_base+6
+      = 8007            t1lh_reg        =       via_base+7
+      = 8008            t2cl_reg        =       via_base+8
+      = 8009            t2ch_reg        =       via_base+9
+      = 800A            sr_reg          =       via_base+10
+      = 800B            acr_reg         =       via_base+11
+      = 800C            pcr_reg         =       via_base+12
+      = 800D            ifr_reg         =       via_base+13
+      = 800E            ier_reg         =       via_base+14
+      = 800F            iora2_reg       =       via_base+15
+
+                        ;---------------------------------------------------------------------
+                        ; Initalize the chip and interrupt handlers
+2126                    via6522_init
+2126  78                        sei
+                                ; Save old IRQ vector
+2127  AD E803                   lda     irq_vector
+212A  8D F003                   sta     old_irq_vectorl
+212D  AD E903                   lda     irq_vector+1
+2130  8D F103                   sta     old_irq_vectorh
+                                ; Insert new IRQ vector
+2133  A9 21                     lda     #>via6522_irq
+2135  A2 77                     ldx     #<via6522_irq
+2137  8E E803                   stx      irq_vector
+213A  8D E903                   sta      irq_vector+1
+
+                                ; Enable interrupts
+213D  A9 C0                     lda     #$c0            ; Enable Timer 1
+213F  8D 0E80                   sta     ier_reg
+
+                                ; Init software counter
+2142  A9 00                     lda     #$00
+2144  8D F203                   sta     via6522_count
+2147  58                        cli
+2148  60                        rts
+
+                        ;---------------------------------------------------------------------
+                        ; From: http://6502.org/source/io/6522timr.htm (which included errors)
+                        ; 1MHz clock + 10000 count = 10ms; $2710 in hex
+                        ; It looks like the actual value is 2 less i.e. $2708
+                        ; Entry:
+                        ;   X = count_hi
+                        ;   A = count_lo
+                        ; Exit: trashes A
+
+2149                    via6522_test_1shot1
+2149  A2 27                     ldx     #$27            ; High
+214B  A9 0E                     lda     #$0e            ; Low
+214D                    via6522_1shot1
+214D  48                        pha
+214E  A9 00                     LDA     #$00
+2150  8D 0B80                   STA     ACR_reg      ;1-Shot Mode: No PB7 Pulses
+2153  68                        pla
+2154  8D 0680                   STA     T1LL_reg     ;Low-Latch
+2157  8E 0580                   stx     T1CH_reg     ;Loads also T1CL and Starts
+215A                    loop_1shot1
+215A  AD 0D80                   LDA     IFR_reg         ; Time Out?
+215D  29 40                     AND     #$40            ; The original example was incorrect
+215F  F0 F9                     BEQ     loop_1shot1
+2161  AD 0480                   LDA     T1CL_reg        ; Clear Interrupt Flag
+2164  60                        rts
+
+                        ;---------------------------------------------------------------------
+                        ; Continuous 1 second intervals
+                        ; Call via6522_test_cont1 to set up
+                        ; Then call via6522_check_count continuously to see if 1 second is up.
+                        ; Returns C=1 if 1 second is up.
+
+2165                    via6522_test_cont1
+2165  A2 27                     ldx     #$27            ; High
+2167  A9 0E                     lda     #$0e            ; Low
+2169                    via6522_cont1
+2169  48                        pha
+216A  A9 C0                     LDA     #($40+$80)
+216C  8D 0B80                   STA     ACR_reg      ; Continuous Mode: No PB7 Pulses
+216F  68                        pla
+2170  8D 0680                   STA     T1LL_reg     ;Low-Latch
+2173  8E 0580                   stx     T1CH_reg     ;Loads also T1CL and Starts
+
+                                IF 0
+                                ENDIF
+2176  60                        rts
+
+                        ;---------------------------------------------------------------------
+                        ; Interrupt handler
+2177                    via6522_irq
+2177  AD 0D80                   lda     ifr_reg
+217A  0A                        asl                     ; Bit 7 -> C
+217B  90 0F                     bcc     not_via6522_irq         ; Not a 6522 IRQ
+217D  29 80                     and     #$80            ; Is it Timer1?
+217F  D0 01                     bne     via6522_timer1_irq
+2181  00                        brk                     ; Break if it's some other 6522 interrupt
+2182                    via6522_timer1_irq
+2182  AD 0480                   lda     T1CL_reg        ; Clear Interrupt Flag
+2185  EE F203                   inc     via6522_count
+2188  68                        pla                     ; Restore X
+2189  AA                        tax                     ; 		
+218A  68                        pla                     ; Restore A
+218B  40                        rti
+
+                        ;---------------------------------------------------------------------
+                        ; Not our interrupt, next IRQ handler
+218C                    not_via6522_irq
+218C  6C F003                   jmp     (old_irq_vectorl)       ; Jump to the next interrupt handler
+
+                        ;---------------------------------------------------------------------
+                        ; Set up Timer 1 for continuous with PB7
+218F                    via6522_cont1pb7
+                                ; Disable Timer 1 interrupt
+218F  A9 40                     lda     #$40            ; Disable Timer 1
+2191  8D 0E80                   sta     ier_reg
+
+2194  A9 C0                     LDA     #($40+$80)      ; Timer1 cont with PA7
+2196  8D 0B80                   STA     ACR_reg         ; Continuous Mode: PB7 Pulses
+2199  AD F303                   lda     via6522_freqcntl
+219C  8D 0680                   STA     T1LL_reg        ;Low-Latch
+219F  AD F403                   lda     via6522_freqcnth
+21A2  8D 0580                   sta     T1CH_reg        ;Loads also T1CL and Starts
+21A5  60                        rts
+
+                        ;---------------------------------------------------------------------
+                        ; Polling for 10ms
+
+21A6                    via6522_10ms_1shot2
+21A6  A2 27                     ldx     #$27            ; High
+21A8  A9 0E                     lda     #$0e            ; Low
+21AA                    via6522_1shot2
+                        ;        pha
+                        ;        lda     acr_reg
+                        ;        and     #$bf
+                        ;        STA     ACR_reg      ;1-Shot Mode: No PB7 Pulses
+                        ;        pla
+21AA  8D 0880                   STA     T2cl_reg     ;Low-Latch
+21AD  8E 0980                   stx     T2ch_reg     ;Loads also T1CL and Starts
+21B0                    loop_1shot2
+21B0  AD 0D80                   LDA     IFR_reg         ; Time Out?
+21B3  29 20                     AND     #$20            ;
+21B5  F0 F9                     BEQ     loop_1shot2
+21B7  AD 0880                   LDA     T2CL_reg        ; Clear Interrupt Flag
+21BA  60                        rts
+
+                        ;---------------------------------------------------------------------
+                        ; Tone machine
+                        ; Variables stored in RAM before calling this routine
+                        ; via6522_freqcntl         =       $03f3
+                        ; via6522_freqcnth         =       $03f43
+                        ; via6522_duration         =       $03f5
+
+21BB                    play_tone
+21BB  20 8F21                   jsr     via6522_cont1pb7        ; Set up for the tone
+21BE                    pt_loop
+21BE  20 A621                   jsr     via6522_10ms_1shot2     ; Set up timer 2 for tone duration
+21C1  CE F503                   dec     via6522_duration
+21C4  D0 F8                     bne     pt_loop
+                        ;        LDA     #$00                    ; Stop Timer 1
+21C6  AD 0B80                   lda     acr_reg
+21C9  29 3F                     and     #$3f                    ; Zero the T1 timer controls
+21CB  8D 0B80                   sta     acr_reg
+21CE  60                        rts
+
+                        ;---------------------------------------------------------------------
+                        ; Counter values for a chromatic scale
+
+21CF                    scale_table
+21CF  7507                      .byte   $75, $07        ; C
+21D1  0A07                      .byte   $0A, $07        ; C#
+21D3  A506                      .byte   $A5, $06        ; D
+21D5  4506                      .byte   $45, $06        ; D#
+21D7  EB05                      .byte   $EB, $05        ; E
+21D9  9605                      .byte   $96, $05        ; F
+21DB  4505                      .byte   $45, $05        ; F#
+21DD  FA04                      .byte   $FA, $04        ; G
+21DF  B204                      .byte   $B2, $04        ; G#
+21E1  6E04                      .byte   $6E, $04        ; A - 440Hz
+21E3  2F04                      .byte   $2F, $04        ; A#
+21E5  F203                      .byte   $F2, $03        ; B
+21E7  BA03                      .byte   $BA, $03        ; C
+
+                        ;---------------------------------------------------------------------
+                        ; Example to play all the notes of the scale
+
+21E9                    play_scale
+21E9  A2 00                     ldx     #$00
+21EB                    ps_loop
+21EB  BD CF21                   lda     scale_table, x
+21EE  8D F303                   sta     via6522_freqcntl
+21F1  E8                        inx
+21F2  BD CF21                   lda     scale_table, x
+21F5  8D F403                   sta     via6522_freqcnth
+21F8  E8                        inx
+21F9  A9 14                     lda     #20             ; Time for each note. Value x10ms
+21FB  8D F503                   sta     via6522_duration
+21FE  8A                        txa
+21FF  48                        pha
+2200  20 BB21                   jsr     play_tone
+2203  68                        pla
+2204  AA                        tax
+2205  E0 1A                     cpx     #26
+2207  D0 E2                     bne     ps_loop
+2209  60                        rts
+
+                        ;---------------------------------------------------------------------
+                        ; Play a note
+                        ; Entry: X is duration, A is the key
+
+220A                    play_note
+220A  8E F503                   stx     via6522_duration
+220D  8D F303                   sta     via6522_freqcntl
+2210  0E F303                   asl     via6522_freqcntl        ; Need to x2 to get index into scale
+2213  AE F303                   ldx     via6522_freqcntl        ; Using memory as a scratch pad
+2216  BD CF21                   lda     scale_table, x
+2219  8D F303                   sta     via6522_freqcntl
+221C  E8                        inx
+221D  BD CF21                   lda     scale_table, x
+2220  8D F403                   sta     via6522_freqcnth
+2223  4C BB21                   jmp     play_tone
+
+                        ;---------------------------------------------------------------------
+                        ; Format:
+                        ;   Note, duration, note, duration...
+2226                    doe_a_deer
+2226  00300210 04200020         .byte   0, $30, 2, $10, 4, $20, 0, $20, 4, $20, 0, $20, 4, $40
+222E  04200020 0440
+2234  02200410 05100510         .byte   2, $20, 4, $10, 5, $10, 5, $10, 4, $10, 2, $10, 5, $40
+223C  04100210 0540
+2242  04300510 07200420         .byte   4, $30, 5, $10, 7, $20, 4, $20, 7, $20, 4, $20, 7, $40
+224A  07200420 0740
+2250  FF                        .byte   $ff
+
+2251                    play_doe_a_deer
+2251  A0 00                     ldy     #$00
+2253                    pdad_loop
+2253  B9 2622                   lda     doe_a_deer, y
+2256  C9 FF                     cmp     #$ff
+2258  F0 0B                     beq     pdad_end
+225A  C8                        iny
+225B  BE 2622                   ldx     doe_a_deer, y
+225E  20 0A22                   jsr     play_note
+2261  C8                        iny
+2262  4C 5322                   jmp     pdad_loop
+2265                    pdad_end
+2265  60                        rts
+
+
+
+
+
+
+
+
+ACR_REG            800B E  CHECK_INPUT        FF06 E  DDRA_REG           8003 E
+DDRB_REG           8002 E  DOE_A_DEER         2226    IER_REG            800E E
+IFR_REG            800D E  INPUT_CHAR         FF03 E  IORA2_REG          800F E
+IORA_REG           8001 E  IORB_REG           8000 E  IRQ_VECTOR         03E8 E
+LOOP_1SHOT1        215A    LOOP_1SHOT2        21B0    NOT_VIA6522_IRQ    218C
+OC_1SEC            2119    OC_LOOP            2108    OC_LOOP2           210B
+OC_OUTCHAR         2120    OLD_IRQ_VECTORH    03F1 E  OLD_IRQ_VECTORL    03F0 E
+OUTPUT_CHAR        FF09 E  PCR_REG            800C E  PDAD_END           2265
+PDAD_LOOP          2253    PLAY_DOE_A_DEER    2251    PLAY_NOTE          220A
+PLAY_SCALE         21E9    PLAY_TONE          21BB    PS_LOOP            21EB
+PT_LOOP            21BE    RELOOP_SCALE       2000    SCALE_TABLE        21CF
+SR_REG             800A E  T1CH_REG           8005 E  T1CL_REG           8004 E
+T1LH_REG           8007 E  T1LL_REG           8006 E  T2CH_REG           8009 E
+T2CL_REG           8008 E  TEST_TIMER         2100    
+VIA6522_10MS_1SHOT2                           21A6    VIA6522_1SHOT1     214D
+VIA6522_1SHOT2     21AA    VIA6522_CONT1      2169    VIA6522_CONT1PB7   218F
+VIA6522_COUNT      03F2 E  VIA6522_DURATION   03F5 E  VIA6522_FREQCNTH   03F4 E
+VIA6522_FREQCNTL   03F3 E  VIA6522_INIT       2126    VIA6522_IRQ        2177
+VIA6522_TEST_1SHOT1                           2149    VIA6522_TEST_CONT1 2165
+VIA6522_TIMER1_IRQ 2182    VIA_BASE           8000 E
