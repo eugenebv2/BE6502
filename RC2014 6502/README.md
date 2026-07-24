@@ -1,20 +1,17 @@
-Change the pcb sch to RC2014 6502 compatible. 
-
-And change the VIA 6522 I/O address to $8000, enable ping from 65C51 board ping 37
-
-The 65C51 I/O address change the pic sch to get $8400
+Change the pcb sch to RC2014 6502 compatible. <BR/>
+And change the VIA 6522 I/O address to $8000, enable ping from 65C51 board ping 37<BR/>
+The 65C51 I/O address change the pic sch to get $8400<BR/>
 
 6502 Monitor RC2014 v0.2.2<BR/>
-?           Print this help
-D XXXX      Dump memory from XXXX
-E XXXX      Edit memory from XXXX
-G XXXX      Go execute from XXXX
-U           Upload Intel HEX file
-            ESC to quit when upload is done
-115200 bps 
+?           Print this help<BR/>
+D XXXX      Dump memory from XXXX<BR/>
+E XXXX      Edit memory from XXXX<BR/>
+G XXXX      Go execute from XXXX<BR/>
+U           Upload Intel HEX file<BR/>
+            ESC to quit when upload is done<BR/>
+115200 bps <BR/>
 
-RUN Ehbasic   >G C100 
-
+RUN Ehbasic<BR/>   >G C100 
 
 ![alt text][def1]
 
