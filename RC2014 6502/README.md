@@ -4,7 +4,14 @@ And change the VIA 6522 I/O address to $8000, enable ping from 65C51 board ping 
 
 The 65C51 I/O address change the pic sch to get $8400
 
-RC2014 Monitor 115200 bps 
+6502 Monitor RC2014 v0.2.2
+?           Print this help
+D XXXX      Dump memory from XXXX
+E XXXX      Edit memory from XXXX
+G XXXX      Go execute from XXXX
+U           Upload Intel HEX file
+            ESC to quit when upload is done
+115200 bps 
 
 RUN Ehbasic   >G C100 
 
