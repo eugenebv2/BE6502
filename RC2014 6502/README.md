@@ -4,6 +4,11 @@ And change the VIA 6522 I/O address to $8000, enable ping from 65C51 board ping 
 
 The 65C51 I/O address change the pic sch to get $8400
 
+RC2014 Monitor 115200 bps 
+
+RUN Ehbasic   >G C100 
+
+
 ![alt text][def1]
 
 [def1]: images/IMG_5690.jpg
