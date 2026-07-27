@@ -1,8 +1,22 @@
 Clone from: https://github.com/tebl/BE6502-Build-a-65c02-computer
 
-BE6502 監督程式用 Ben Eater 分享的 msbasic + bios + wozmon 
+BE6502 監督程式用 Ben Eater 分享的 msbasic + bios + wozmon + supermon64
 
-8000 R 可進入 MS BASIC 
+開機進入 WOZMON \<br/>
+輸入 8000 R 可進入 MS BASIC <br/>
+在 BASIC OK 下輸入<br/>
+MONITOR 可進入 supermon64<br/>
+WOZMON 可進入 wozmon<br/>
+<hr>
+Supermon64 指令
+
+<br/>
+M
+<br/>
+A
+<br/>
+D 
+<br/>
 <hr>
 Using BE6502 board testing 6502 assembler.
 
