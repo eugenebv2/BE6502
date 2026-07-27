@@ -9,7 +9,18 @@ MONITOR 可進入 supermon64<br/>
 WOZMON 可進入 wozmon<br/>
 <hr>
 Supermon64 指令
-
+<br/>
+R
+<br/>
+;
+<br/>
+>
+<br/>
+F
+<br/>
+H
+<br/>
+T
 <br/>
 M
 <br/>
