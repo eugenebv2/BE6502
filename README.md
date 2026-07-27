@@ -17,6 +17,9 @@ A
 <br/>
 D 
 <br/>
+X
+<br/>
+<br/>
 <hr>
 Using BE6502 board testing 6502 assembler.
 
